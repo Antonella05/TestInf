@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Psychotechnique - INF</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Using a reliable CDN for html2pdf -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"
+        integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <style>
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+        }
+
+        /* Modal Animation */
+        .modal-enter {
+            opacity: 0;
+            transform: scale(0.9);
+        }
+
+        .modal-enter-active {
+            opacity: 1;
+            transform: scale(1);
+            transition: opacity 300ms, transform 300ms;
+        }
+
+        /* PDF Optimization Classes */
+        .pdf-page-break-avoid {
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 text-gray-900 font-sans antialiased">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Icons ---
+        const Icon = ({ path, size = 24, className = '', color = 'currentColor' }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{path}</svg>
+        );
+        const Clock = (props) => <Icon {...props} path={<><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>} />;
+        const CheckCircle = (props) => <Icon {...props} path={<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>} />;
+        const XCircle = (props) => <Icon {...props} path={<><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></>} />;
+        const FileText = (props) => <Icon {...props} path={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></>} />;
+        const Download = (props) => <Icon {...props} path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></>} />;
+        const AlertBuild = (props) => <Icon {...props} path={<><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></>} />;
+
+        // --- Main Component ---
+
+        // Helper function to check if an array contains duplicate non-empty values
+        const hasDuplicates = (arr) => {
+            const nonNull = arr.filter(v => v !== '' && v !== null && v !== undefined);
+            return new Set(nonNull).size !== nonNull.length;
+        };
+        const TestPsychotechniqueINF = () => {
+            const [currentSection, setCurrentSection] = useState('intro');
+            const [currentTest, setCurrentTest] = useState(0);
+            const [timeLeft, setTimeLeft] = useState(0);
+            const [answers, setAnswers] = useState({});
+            const [testStarted, setTestStarted] = useState(false);
+            const [results, setResults] = useState(null);
+            const [candidateName, setCandidateName] = useState('');
+            const [candidateEmail, setCandidateEmail] = useState('');
+            const [errorMsg, setErrorMsg] = useState('');
+            const [showWarningModal, setShowWarningModal] = useState(false);
+            const [testTimes, setTestTimes] = useState({});
+            const [testStart, setTestStart] = useState({}); // timestamps per test (ms)
+
+            const tests = [
+                {
+                    id: 'test1',
+                    name: 'Test 1 - Raisonnement logique & prise de décision',
+                    duration: 600, // 10 minutes en secondes
+                    weight: 10,
+                    maxScore: 20,
+                    questions: [
+                        {
+                            id: 'q1',
+                            text: "Une Antenne Départementale transmet des rapports incomplets depuis deux mois. Quelle est votre première action ?",
+                            options: [
+                                { value: 'A', text: 'Adresser un avertissement écrit' },
+                                { value: 'B', text: 'Remplacer le responsable' },
+                                { value: 'C', text: 'Analyser les causes et proposer un appui ciblé' },
+                                { value: 'D', text: "Suspendre temporairement l'antenne" }
+                            ],
+                            hasJustification: true
+                        },
+                        {
+                            id: 'q2',
+                            text: "Une commune refuse de collaborer avec l'INF sur un dossier VBG sensible. Vous :",
+                            options: [
+                                { value: 'A', text: "Saisissez immédiatement l'autorité centrale" },
+                                { value: 'B', text: 'Engagez un dialogue avec les leaders locaux' },
+                                { value: 'C', text: 'Ignorez temporairement la commune' },
+                                { value: 'D', text: 'Externalisez le dossier à une ONG' }
+                            ],
+                            hasJustification: true
+                        },
+                        {
+                            id: 'q3',
+                            text: "Un Point Focal très actif mais peu rigoureux dans le reporting. Quelle priorité ?",
+                            options: [
+                                { value: 'A', text: 'Valoriser uniquement les résultats terrain' },
+                                { value: 'B', text: 'Le remplacer' },
+                                { value: 'C', text: 'Renforcer ses capacités en reporting' },
+                                { value: 'D', text: 'Centraliser le reporting à votre niveau' }
+                            ],
+                            hasJustification: true
+                        },
+                        {
+                            id: 'q4',
+                            text: "Une urgence VBG survient pendant une mission planifiée de supervision. Vous :",
+                            options: [
+                                { value: 'A', text: 'Maintenez la mission' },
+                                { value: 'B', text: 'Déléguez totalement' },
+                                { value: 'C', text: 'Réajustez votre agenda' },
+                                { value: 'D', text: 'Annulez toutes les activités' }
+                            ],
+                            hasJustification: true
+                        },
+                        {
+                            id: 'q5',
+                            text: "Face à des tensions récurrentes entre PF et services sociaux, vous :",
+                            options: [
+                                { value: 'A', text: 'Laissez les acteurs régler seuls' },
+                                { value: 'B', text: 'Organisez une médiation institutionnelle' },
+                                { value: 'C', text: 'Remplacez le PF' },
+                                { value: 'D', text: 'Informez uniquement la hiérarchie' }
+                            ],
+                            hasJustification: true
+                        }
+                    ]
+                },
+                {
+                    id: 'test2',
+                    name: 'Test 2 - Organisation & priorisation',
+                    duration: 300, // 5 minutes
+                    weight: 15,
+                    maxScore: 24,
+                    questions: [
+                        {
+                            id: 'priorite',
+                            text: "Classez les actions suivantes par ordre de priorité (1 à 6)",
+                            type: 'ranking',
+                            items: [
+                                'Cas VBG critique signalé dans une commune',
+                                'Rapport trimestriel en retard',
+                                'Réunion préfectorale planifiée',
+                                "Supervision programmée d'une antenne performante",
+                                'Formation PF prévue',
+                                'Demande urgente du siège'
+                            ],
+                            hasJustification: true,
+                            justificationPrompt: 'Expliquez brièvement votre premier choix (3 lignes maximum)'
+                        }
+                    ]
+                },
+                {
+                    id: 'test3',
+                    name: 'Test 3 - Compréhension écrite & restitution',
+                    duration: 900, // 15 minutes
+                    weight: 15,
+                    maxScore: 12,
+                    text: `Depuis deux ans, l'Institut National de la Femme (INF) a renforcé sa présence au niveau territorial à travers la création d'Antennes Départementales et la désignation de Points Focaux communaux. Cette stratégie vise à rapprocher les services de protection, de promotion des droits des femmes et de lutte contre les violences basées sur le genre (VBG) des populations, en tenant compte des réalités locales.
+
+Cependant, dans certaines zones, ce déploiement s'est heurté à des résistances sociales et institutionnelles. Des leaders communautaires et certaines autorités locales estiment que les interventions de l'INF remettent en cause des pratiques culturelles établies ou perturbent l'équilibre familial. Dans plusieurs communes, ces perceptions ont entraîné une baisse de collaboration, une participation communautaire limitée et, dans certains cas, une réticence à signaler les situations de VBG.
+
+Par ailleurs, le fonctionnement du réseau territorial révèle des disparités importantes. Certains Points Focaux démontrent une forte capacité de mobilisation et de reporting, tandis que d'autres peinent à produire des données fiables et régulières. Cette situation complique le suivi-évaluation, limite la capitalisation des actions menées et fragilise la crédibilité institutionnelle de l'INF auprès de ses partenaires techniques et financiers.
+
+Face à ces défis, la direction de l'INF insiste sur la nécessité de renforcer le leadership territorial, la qualité du dialogue avec les acteurs locaux et l'appropriation communautaire des actions. Elle souligne également l'importance d'un pilotage fondé sur des données probantes, combiné à une approche sensible au genre, aux dynamiques socioculturelles et au bien-être des acteurs de terrain, souvent exposés à une forte charge émotionnelle.
+
+Dans ce contexte, le rôle du/de la Chargé(e) des Antennes Départementales et Points Focaux apparaît déterminant. Au-delà de la coordination administrative, il ou elle doit agir comme facilitateur(trice), médiateur(trice) et garant(e) de la cohérence entre les orientations nationales et les réalités locales, afin d'assurer un impact durable des actions de l'INF.`,
+                    questions: [
+                        {
+                            id: 'q1',
+                            text: "Quel est l'objectif principal du déploiement territorial de l'INF tel que présenté dans le texte ?",
+                            type: 'longText',
+                            points: 4
+                        },
+                        {
+                            id: 'q2',
+                            text: "Citez et expliquez deux difficultés majeures rencontrées par l'INF dans la mise en œuvre de sa stratégie territoriale.",
+                            type: 'longText',
+                            points: 5
+                        },
+                        {
+                            id: 'q3',
+                            text: "Pourquoi la fiabilité des données produites par les Points Focaux est-elle stratégique pour l'INF ?",
+                            type: 'longText',
+                            points: 3
+                        }
+                    ]
+                },
+                {
+                    id: 'test4',
+                    name: 'Test 4 - Leadership & posture relationnelle',
+                    duration: 300, // 5 minutes
+                    weight: 15,
+                    maxScore: 20,
+                    questions: [
+                        { id: 'l1', text: "Je privilégie l'écoute avant la décision", type: 'likert' },
+                        { id: 'l2', text: 'Je suis à l\'aise pour recadrer avec respect', type: 'likert' },
+                        { id: 'l3', text: 'Je préfère convaincre plutôt qu\'imposer', type: 'likert' },
+                        { id: 'l4', text: 'Je prends des décisions même en contexte incertain', type: 'likert' },
+                        { id: 'l5', text: 'Je sais adapter mon style selon les interlocuteurs', type: 'likert' },
+                        { id: 'l6', text: 'Je gère les conflits sans les éviter', type: 'likert' },
+                        { id: 'l7', text: 'Je fais confiance à mon équipe', type: 'likert' },
+                        { id: 'l8', text: 'Je délègue efficacement', type: 'likert' },
+                        { id: 'l9', text: 'Je reste calme sous pression', type: 'likert' },
+                        { id: 'l10', text: 'Je communique clairement mes attentes', type: 'likert' }
+                    ]
+                },
+                {
+                    id: 'test5',
+                    name: 'Test 5 - Résilience & gestion du stress',
+                    duration: 180, // 3 minutes
+                    weight: 10,
+                    maxScore: 12,
+                    questions: [
+                        {
+                            id: 'r1',
+                            text: "Après une mission émotionnellement lourde, je :",
+                            options: [
+                                { value: 'A', text: 'Continue sans pause' },
+                                { value: 'B', text: 'Demande un appui' },
+                                { value: 'C', text: 'Me replie durablement' },
+                                { value: 'D', text: "Ignore l'impact" }
+                            ]
+                        },
+                        {
+                            id: 'r2',
+                            text: "Sous pression, je :",
+                            options: [
+                                { value: 'A', text: 'Deviens confus' },
+                                { value: 'B', text: 'Priorise calmement' },
+                                { value: 'C', text: 'Transfère la responsabilité' },
+                                { value: 'D', text: 'Retarde les décisions' }
+                            ]
+                        },
+                        {
+                            id: 'r3',
+                            text: "En cas d'échec, je :",
+                            options: [
+                                { value: 'A', text: 'Me décourage' },
+                                { value: 'B', text: 'Analyse et ajuste' },
+                                { value: 'C', text: 'Blâme le contexte' },
+                                { value: 'D', text: 'Évite la situation' }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    id: 'test6',
+                    name: 'Test 6 - Éthique & sens institutionnel',
+                    duration: 600, // 10 minutes
+                    weight: 15,
+                    maxScore: 12,
+                    questions: [
+                        {
+                            id: 'e1',
+                            text: "Un élu vous demande de ne pas signaler un cas sensible. Que faites-vous ?",
+                            type: 'longText'
+                        },
+                        {
+                            id: 'e2',
+                            text: "Un PF divulgue des informations confidentielles. Votre réaction ?",
+                            type: 'longText'
+                        },
+                        {
+                            id: 'e3',
+                            text: "Comment conciliez-vous loyauté institutionnelle et pressions locales ?",
+                            type: 'longText'
+                        }
+                    ]
+                },
+                {
+                    id: 'test7',
+                    name: 'Test 7 - Cohérence comportementale',
+                    duration: 600, // 10 minutes
+                    weight: 10,
+                    maxScore: 4,
+                    questions: [
+                        {
+                            id: 'c1',
+                            text: "Lorsque les équipes locales rencontrent des difficultés récurrentes, il est parfois nécessaire de reprendre la main de façon directive, même si cela réduit temporairement leur autonomie.",
+                            type: 'agreement',
+                            hasJustification: true
+                        },
+                        {
+                            id: 'c2',
+                            text: "La performance durable des Antennes et Points Focaux repose avant tout sur leur autonomie et leur responsabilisation, même en période de crise.",
+                            type: 'agreement',
+                            hasJustification: true
+                        }
+                    ]
+                },
+                {
+                    id: 'test8',
+                    name: 'Test 8 - Éthique & arbitrage',
+                    duration: 120, // 2 minutes
+                    weight: 15,
+                    maxScore: 4,
+                    questions: [
+                        {
+                            id: 'arb1',
+                            text: "Une autorité locale influente vous demande de suspendre temporairement l'intervention de l'INF sur un cas sensible de VBG afin de « préserver la paix sociale ». Dans le même temps, la victime exprime une peur immédiate de représailles. Quelle décision prenez-vous et pourquoi?",
+                            type: 'longText'
+                        }
+                    ]
+                }
+            ];
+
+            useEffect(() => {
+                let timer;
+                if (testStarted && timeLeft > 0) {
+                    timer = setInterval(() => {
+                        setTimeLeft(prev => {
+                            if (prev <= 1) {
+                                clearInterval(timer);
+                                setTimeout(() => handleNextTest(), 0);
+                                return 0;
+                            }
+                            return prev - 1;
+                        });
+                    }, 1000);
+                }
+                return () => clearInterval(timer);
+            }, [testStarted, timeLeft]);
+
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            const startTest = (testIndex) => {
+                if (!checkUniqueness()) return;
+
+                setCurrentTest(testIndex);
+                setTimeLeft(tests[testIndex].duration);
+                setTestStarted(true);
+                setCurrentSection('test');
+                // record start timestamp for per-question timing (only if not already set)
+                setTestStart(prev => (prev[tests[testIndex].id] ? prev : { ...prev, [tests[testIndex].id]: Date.now() }));
+            };
+
+            const handleAnswer = (testId, questionId, value, isJustification = false) => {
+                setAnswers(prev => {
+                    const existing = prev[testId]?.[questionId] || {};
+                    const base = isJustification ? { ...existing, justification: value } : (typeof value === 'object' ? value : { ...existing, answer: value });
+
+                    // If no timeTaken recorded yet, set it as seconds since test start
+                    if (!existing.timeTaken) {
+                        const startTs = testStart[testId];
+                        if (startTs) {
+                            base.timeTaken = Math.round((Date.now() - startTs) / 1000);
+                        }
+                    } else {
+                        base.timeTaken = existing.timeTaken;
+                    }
+
+                    return {
+                        ...prev,
+                        [testId]: {
+                            ...prev[testId],
+                            [questionId]: base
+                        }
+                    };
+                });
+            };
+
+            const handleNextTest = () => {
+                const currentTestId = tests[currentTest].id;
+                const duration = tests[currentTest].duration;
+
+                setTestTimes(prev => ({
+                    ...prev,
+                    [currentTestId]: duration - timeLeft
+                }));
+
+                setTestStarted(false);
+                if (currentTest < tests.length - 1) {
+                    setCurrentSection('transition');
+                } else {
+                    calculateResults();
+                }
+            };
+
+            // --- Anti-Doublon Logic (Normalisé pour Nom/Mail) ---
+            const normalize = (str) => str.trim().toLowerCase().replace(/\s+/g, '');
+
+            const getEmailKey = () => `inf_done_email_${normalize(candidateEmail)}`;
+            const getNameKey = () => `inf_done_name_${normalize(candidateName)}`;
+
+            const checkUniqueness = () => {
+                if (!candidateName.trim() || !candidateEmail.trim() || !candidateEmail.includes('@')) {
+                    setErrorMsg("Veuillez remplir correctement votre nom et votre email.");
+                    return false;
+                }
+
+                // Check Email
+                if (localStorage.getItem(getEmailKey())) {
+                    setErrorMsg("ERREUR : Cet email a déjà été utilisé pour passer le test. Une seule tentative est autorisée.");
+                    return false;
+                }
+
+                // Check Name
+                if (localStorage.getItem(getNameKey())) {
+                    setErrorMsg("ERREUR : Ce nom figure déjà dans la base des tests passés. Une seule tentative est autorisée.");
+                    return false;
+                }
+
+                setErrorMsg('');
+                return true;
+            };
+
+            const saveCompletion = () => {
+                const metadata = JSON.stringify({
+                    name: candidateName,
+                    email: candidateEmail,
+                    date: new Date().toISOString()
+                });
+                localStorage.setItem(getEmailKey(), metadata);
+                localStorage.setItem(getNameKey(), metadata);
+            };
+
+            // Helper: compute numeric score for a single question (0..qMax) - fully automatic
+            const scoreForQuestion = (q, answer) => {
+                const qMax = q.points || 4;
+                if (answer === undefined || answer === null || answer === '') return { score: 0 };
+
+                // Likert (1-5) -> map to 0..4 then scale to qMax
+                if (q.type === 'likert') {
+                    const v = parseInt(answer);
+                    if (isNaN(v)) return { score: 0 };
+                    const base = Math.max(0, Math.min(4, v - 1));
+                    return { score: (base / 4) * qMax };
+                }
+
+                // Agreement (4 choices) -> proportional mapping 0..4
+                if (q.type === 'agreement') {
+                    const opts = ['Tout à fait d\'accord', 'Plutôt d\'accord', 'Plutôt pas d\'accord', 'Pas du tout d\'accord'];
+                    const idx = opts.indexOf(answer);
+                    const pos = idx >= 0 ? idx : 0;
+                    const base = (pos / Math.max(1, opts.length - 1)) * 4;
+                    return { score: (base / 4) * qMax };
+                }
+
+                // Ranking: answer expected as array of ranks (strings). Score by completeness/uniqueness
+                if (q.type === 'ranking') {
+                    if (!Array.isArray(answer)) return { score: 0 };
+                    const n = q.items.length;
+                    // parse numeric ranks
+                    const ranks = answer.map(a => {
+                        const v = Number(a);
+                        return isNaN(v) ? null : Math.floor(v);
+                    }).filter(v => v !== null && v >= 1 && v <= n);
+                    const unique = Array.from(new Set(ranks));
+                    // full credit if all ranks present and unique
+                    if (unique.length === n && ranks.length === n) {
+                        return { score: qMax };
+                    }
+                    // partial credit: proportion of unique valid ranks
+                    const quality = (unique.length / n);
+                    return { score: (quality) * qMax };
+                }
+
+                // Multiple choice with explicit correct key
+                if (q.options && q.correct) {
+                    return { score: (answer === q.correct) ? qMax : 0 };
+                }
+
+                // LongText, text, or options without correct key: auto-score by text length/completeness heuristic
+                if (q.type === 'longText' || q.type === 'text' || (q.options && !q.correct)) {
+                    const text = String(answer).trim();
+                    if (!text) return { score: 0 };
+                    // heuristic: award points based on text length (rough proxy for effort)
+                    // 0-50 chars = 0.25*qMax, 50-150 = 0.5*qMax, 150-300 = 0.75*qMax, 300+ = full qMax
+                    const len = text.length;
+                    let heuristic = 0;
+                    if (len > 300) heuristic = qMax;
+                    else if (len > 150) heuristic = qMax * 0.75;
+                    else if (len > 50) heuristic = qMax * 0.5;
+                    else if (len > 0) heuristic = qMax * 0.25;
+                    return { score: heuristic };
+                }
+
+                // Fallback: attempt to derive numeric if answer is numeric
+                const n = Number(answer);
+                if (!isNaN(n)) {
+                    const base = Math.max(0, Math.min(4, n));
+                    return { score: (base / 4) * qMax };
+                }
+
+                // Scoring for Ranking (Test 2)
+                if (q.type === 'ranking' && Array.isArray(answer)) {
+                    // Simple heuristic: 1 point per item ranked (non-empty value)
+                    const rankedCount = answer.filter(v => v !== '' && v !== null && v !== undefined).length;
+                    // Max score for Test 2 is 24, with 6 items. Max 4 points per item.
+                    // We can assign a score based on completion: 4 points per item ranked.
+                    // This is a placeholder as the correct answers are unknown.
+                    const score = (rankedCount / q.items.length) * qMax;
+                    return { score: score };
+                }
+
+                return { score: 0 };
+            };
+
+            // Compute scores per test: fully automated scoring
+            const computeTestScores = (test) => {
+                const testAnswers = answers[test.id] || {};
+                let rawTotal = 0;
+                let qMaxSum = 0;
+
+                test.questions.forEach(q => {
+                    const qMax = q.points || 4;
+                    qMaxSum += qMax;
+                    const ansEntry = testAnswers[q.id];
+                    const answer = ansEntry?.answer;
+
+                    const { score } = scoreForQuestion(q, answer);
+                    rawTotal += score;
+                });
+
+                const maxRaw = qMaxSum; // should match test.maxScore normally
+
+                return { rawTotal, maxRaw };
+            };
+
+            const calculateResults = () => {
+                const scores = {};
+                let totalWeighted = 0;
+                let totalWeights = 0;
+                let anyManual = false;
+
+                tests.forEach(test => {
+                    const detail = computeTestScores(test);
+                    const raw = detail.rawTotal; // obtained raw points (0..maxRaw)
+                    const maxRaw = detail.maxRaw || test.maxScore || 0;
+
+                    const usedMaxRaw = maxRaw;
+
+                    const weighted = usedMaxRaw > 0 ? (raw / usedMaxRaw) * test.weight : 0;
+
+                    scores[test.id] = {
+                        raw: raw,
+                        maxRaw: usedMaxRaw,
+                        weighted: weighted,
+                        max: test.weight
+                    };
+
+                    totalWeighted += weighted;
+                    totalWeights += test.weight;
+                });
+
+                // Elimination thresholds (weighted points): ethique(test6) >= 8, resilience(test5) >= 8
+                const ethiqueScore = scores['test6']?.weighted || 0;
+                const resilienceScore = scores['test5']?.weighted || 0;
+                const isEliminatoire = (ethiqueScore < 8) || (resilienceScore < 8);
+
+                let profile = 'C - Non recommandé';
+                if (!isEliminatoire) {
+                    if (totalWeighted >= 75) profile = 'A - Haut potentiel stratégique';
+                    else if (totalWeighted >= 60) profile = 'B - Potentiel à consolider';
+                }
+
+                saveCompletion();
+
+                setResults({
+                    totalScore: (totalWeighted).toFixed(2),
+                    scores,
+                    profile,
+                    isEliminatoire,
+                    eliminatoireReason: isEliminatoire ?
+                        (ethiqueScore < 8 ? 'Éthique & sens institutionnel < seuil (8 pts pondérés)' :
+                            'Résilience émotionnelle & stress < seuil (8 pts pondérés)') : null
+                });
+                setCurrentSection('results');
+            };
+
+            // --- PDF Generation Fixes (Visible Overlay for reliability) ---
+            const generatePDF = () => {
+                const element = document.getElementById('report-content');
+                if (!element) return;
+
+                // Create a visible overlay container
+                const container = document.createElement('div');
+                Object.assign(container.style, {
+                    position: 'fixed',
+                    top: '0',
+                    left: '0',
+                    width: '100%',
+                    height: '100%',
+                    zIndex: '9999',
+                    backgroundColor: 'white',
+                    overflow: 'auto',
+                    padding: '20px'
+                });
+
+                // Clone the element
+                const clone = element.cloneNode(true);
+                // Ensure the clone has proper styling for A4 export
+                Object.assign(clone.style, {
+                    width: '800px', // Fixed width for consistent PDF layout
+                    margin: '0 auto',
+                    backgroundColor: 'white',
+                    boxShadow: 'none'
+                });
+
+                container.appendChild(clone);
+                document.body.appendChild(container);
+
+                const opt = {
+                    margin: 0.5,
+                    filename: `Rapport_INF_${candidateName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 1024 }, // Ensure windowWidth is sufficient
+                    jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
+                    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+                };
+
+                // Add a small delay to allow rendering to settle
+                setTimeout(() => {
+                    html2pdf().set(opt).from(clone).save().then(() => {
+                        console.log("PDF Generated");
+                        if (document.body.contains(container)) document.body.removeChild(container);
+                    }).catch(err => {
+                        console.error("PDF Generation Error", err);
+                        if (document.body.contains(container)) document.body.removeChild(container);
+                        alert("Une erreur est survenue lors de la génération du PDF.");
+                    });
+                }, 100);
+            };
+
+            // --- Warning Modal ---
+            const WarningModal = () => (
+                <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-8 relative animate-[fadeIn_0.3s_ease-out]">
+                        <div className="text-center">
+                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
+                                <AlertBuild size={32} className="text-red-600" />
+                            </div>
+                            <h3 className="text-2xl font-bold text-gray-900 mb-2">IMPORTANT - À LIRE</h3>
+                            <div className="mt-4 px-2 py-3 bg-red-50 text-red-800 rounded-lg text-left text-sm space-y-3 font-medium">
+                                <p>🛑 <strong>TENTATIVE UNIQUE :</strong> Vous ne pourrez passer ce test qu'une seule fois. Tout rafraîchissement de page ou fermeture annulera votre session sans possibilité de reprise.</p>
+                                <p>📥 <strong>OBLIGATOIRE :</strong> À la fin du test, vous DEVEZ télécharger votre rapport PDF et l'envoyer au recruteur. Sans ce rapport, votre candidature ne sera pas prise en compte.</p>
+                                <p>⚠️ <strong>ENGAGEMENT :</strong> En continuant, vous certifiez être prêt(e) et disposer de 1h30 sans interruption.</p>
+                            </div>
+                        </div>
+                        <div className="mt-8 flex gap-3">
+                            <button
+                                onClick={() => setShowWarningModal(false)}
+                                className="flex-1 px-4 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition"
+                            >
+                                Retour
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowWarningModal(false);
+                                    if (checkUniqueness()) {
+                                        setCurrentSection('testList');
+                                    }
+                                }}
+                                className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition shadow-lg"
+                            >
+                                J'ai compris, commencer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderIntro = () => (
+                <div className="max-w-4xl mx-auto p-4 md:p-8">
+                    {showWarningModal && <WarningModal />}
+                    <div className="bg-white rounded-lg shadow-lg p-8">
+                        <h1 className="text-3xl font-bold text-blue-900 mb-6">
+                            Test Psychotechnique et de Personnalité
+                        </h1>
+                        <h2 className="text-xl text-blue-700 mb-8">
+                            Poste: Chargé(e) de Région - Antennes Départementales & Points Focaux (INF)
+                        </h2>
+
+                        <div className="space-y-4 mb-8">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Nom et Prénom
+                                </label>
+                                <input
+                                    type="text"
+                                    value={candidateName}
+                                    onChange={(e) => setCandidateName(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Ex: Jean Dupont"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Email Professionnel
+                                </label>
+                                <input
+                                    type="email"
+                                    value={candidateEmail}
+                                    onChange={(e) => setCandidateEmail(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Ex: jean.dupont@email.com"
+                                />
+                            </div>
+
+                            {errorMsg && (
+                                <div className="bg-red-50 text-red-700 p-4 rounded-lg flex items-center gap-2 border border-red-200">
+                                    <XCircle size={20} />
+                                    <span className="font-bold">{errorMsg}</span>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="bg-blue-50 border-l-4 border-blue-500 p-6 mb-8">
+                            <h3 className="font-semibold text-lg mb-4">Consignes générales</h3>
+                            <ul className="space-y-2 text-sm">
+                                <li>✓ Lisez attentivement chaque question avant de répondre</li>
+                                <li>✓ Répondez de manière personnelle et sincère</li>
+                                <li>✓ Chaque test est chronométré : passage automatique au suivant si temps écoulé</li>
+                                <li>✓ Vos résultats seront calculés immédiatement</li>
+                            </ul>
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                if (checkUniqueness()) {
+                                    setShowWarningModal(true);
+                                }
+                            }}
+                            className="w-full bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-700 transition"
+                        >
+                            Accéder aux tests
+                        </button>
+                    </div>
+                </div>
+            );
+
+            // Reusing other render methods mostly, just adding the report hidden logic better
+
+            // Build a full report object including answers, times, and per-test times
+            const buildFullReport = () => {
+                const report = {
+                    candidateName,
+                    candidateEmail,
+                    generatedAt: new Date().toISOString(),
+                    testTimes,
+                    results,
+                    answers
+                };
+                return report;
+            };
+
+            const downloadJSONReport = () => {
+                const data = JSON.stringify(buildFullReport(), null, 2);
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `rapport_INF_${candidateName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            };
+
+            const copyJSONToClipboard = async () => {
+                try {
+                    await navigator.clipboard.writeText(JSON.stringify(buildFullReport(), null, 2));
+                    alert('Le rapport JSON complet a été copié dans le presse-papiers. Vous pouvez maintenant le coller dans votre email.');
+                } catch (err) {
+                    alert('Echec de la copie. Vous pouvez télécharger le JSON puis le joindre manuellement.');
+                }
+            };
+
+            // --- Email Sending Function (Simulated Backend) ---
+            const sendEmailWithReport = async () => {
+                const element = document.getElementById('report-content');
+                if (!element) return;
+
+                // Create a visible overlay container
+                const container = document.createElement('div');
+                Object.assign(container.style, {
+                    position: 'fixed',
+                    top: '0',
+                    left: '0',
+                    width: '100%',
+                    height: '100%',
+                    zIndex: '9999',
+                    backgroundColor: 'white',
+                    overflow: 'auto',
+                    padding: '20px'
+                });
+
+                // Clone the element
+                const clone = element.cloneNode(true);
+                Object.assign(clone.style, {
+                    width: '800px',
+                    margin: '0 auto',
+                    backgroundColor: 'white',
+                    boxShadow: 'none'
+                });
+
+                container.appendChild(clone);
+                document.body.appendChild(container);
+
+                const opt = {
+                    margin: 0.5,
+                    filename: `Rapport_INF_${candidateName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 1024 },
+                    jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
+                    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+                };
+
+                try {
+                    // Slight delay for rendering
+                    await new Promise(resolve => setTimeout(resolve, 100));
+
+                    const pdfBlob = await html2pdf().set(opt).from(clone).output('blob');
+                    if (document.body.contains(container)) document.body.removeChild(container);
+
+                    // 2. Convert Blob to Base64 for simulated transmission
+                    const reader = new FileReader();
+                    reader.readAsDataURL(pdfBlob);
+                    reader.onloadend = async () => {
+                        const base64data = reader.result.split(',')[1]; // Get the base64 part
+
+                        // 3. SIMULATED BACKEND CALL
+                        // NOTE: Direct email sending with attachment from client-side JS is impossible
+                        // due to security restrictions. This function SIMULATES the process.
+                        // In a real application, you would send the base64data to a server endpoint.
+                        // Example of what a real-world fetch might look like:
+                        /*
+                        const response = await fetch('YOUR_SERVER_ENDPOINT_FOR_EMAIL', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                to: 'impactplusconsulting229@gmail.com',
+                                subject: `Rapport INF - ${candidateName}`,
+                                body: 'Veuillez trouver ci-joint le rapport d\'évaluation psychotechnique.',
+                                attachment: {
+                                    filename: opt.filename,
+                                    data: base64data
+                                }
+                            })
+                        });
+                        if (response.ok) {
+                            alert("Le rapport a été envoyé avec succès par e-mail !");
+                        } else {
+                            throw new Error('Erreur lors de l\'envoi côté serveur.');
+                        }
+                        */
+
+                        // Since we cannot run a server, we use a client-side workaround:
+                        // 1. Prompt the user to download the PDF.
+                        // 2. Open the mail client with instructions to attach the downloaded file.
+
+                        // First, trigger the download for the user
+                        const url = URL.createObjectURL(pdfBlob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = opt.filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+
+                        // Then, open the mail client with instructions
+                        const subject = `Rapport INF - ${candidateName} (À joindre manuellement)`;
+                        const body = `Bonjour,\n\nVeuillez trouver ci-joint le rapport d'évaluation psychotechnique pour ${candidateName}.\n\nATTENTION : Le fichier PDF a été téléchargé sur votre ordinateur. Veuillez l'attacher manuellement à cet e-mail avant de l'envoyer.\n\nCordialement.`;
+                        const mailto = `mailto:impactplusconsulting229@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+                        alert("Le rapport PDF a été téléchargé sur votre ordinateur. Une nouvelle fenêtre d'e-mail va s'ouvrir. VEUILLEZ JOINDRE MANUELLEMENT LE FICHIER PDF TÉLÉCHARGÉ avant d'envoyer.");
+                        window.location.href = mailto;
+                    };
+                } catch (err) {
+                    console.error("Email/PDF Generation Error", err);
+                    alert("Une erreur est survenue lors de la préparation du rapport. Veuillez réessayer.");
+                }
+            };
+
+            // Remove the old openMailClient function
+            const openMailClient = () => {
+                alert("Fonctionnalité obsolète. Veuillez utiliser le bouton 'Envoyer par Email' qui gère la génération du PDF et l'ouverture du client mail.");
+            };
+
+            const renderTestList = () => (
+                <div className="max-w-4xl mx-auto p-4 md:p-8">
+                    <div className="bg-white rounded-lg shadow-lg p-8">
+                        <h2 className="text-2xl font-bold text-blue-900 mb-2">
+                            Candidat: {candidateName}
+                        </h2>
+
+                        <div className="space-y-4 mb-8">
+                            {tests.map((test, idx) => {
+                                const isCompleted = answers[test.id] && Object.keys(answers[test.id]).length > 0;
+                                return (
+                                    <div
+                                        key={test.id}
+                                        className={`p-6 rounded-lg border-2 ${isCompleted ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'
+                                            }`}
+                                    >
+                                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                                            <div className="flex-1">
+                                                <h3 className="font-semibold text-lg mb-2">{test.name}</h3>
+                                                <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                                                    <span className="flex items-center gap-1">
+                                                        <Clock size={16} />
+                                                        {test.duration / 60} min
+                                                    </span>
+                                                    <span>{test.questions.length} question(s)</span>
+                                                    <span className="font-medium">{test.weight} points</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {isCompleted && <CheckCircle className="text-green-500" size={24} />}
+                                                <button
+                                                    onClick={() => startTest(idx)}
+                                                    className={`px-6 py-2 rounded-lg font-medium w-full md:w-auto ${isCompleted
+                                                        ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                                                        }`}
+                                                >
+                                                    {isCompleted ? 'Reprendre' : 'Commencer'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {tests.every((test, idx) => answers[test.id] && Object.keys(answers[test.id]).length > 0) && (
+                            <button
+                                onClick={calculateResults}
+                                className="w-full bg-green-600 text-white py-4 rounded-lg font-semibold hover:bg-green-700"
+                            >
+                                Terminer et voir les résultats
+                            </button>
+                        )}
+                    </div>
+                </div>
+            );
+
+            const renderTest = () => {
+                const test = tests[currentTest];
+                const testAnswers = answers[test.id] || {};
+
+                return (
+                    <div className="max-w-4xl mx-auto p-4 md:p-8">
+                        <div className="bg-white rounded-lg shadow-lg p-8">
+                            <div className="flex items-center justify-between mb-6 sticky top-0 bg-white z-10 py-2 border-b">
+                                <h2 className="text-xl md:text-2xl font-bold text-blue-900">{test.name}</h2>
+                                <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${timeLeft < 60 ? 'bg-red-100 text-red-700 w-32 animate-pulse' : 'bg-blue-100 text-blue-700 w-32'
+                                    }`}>
+                                    <Clock size={20} />
+                                    <span className="font-mono font-bold text-lg">{formatTime(timeLeft)}</span>
+                                </div>
+                            </div>
+
+                            {test.text && (
+                                <div className="bg-gray-50 p-6 rounded-lg mb-8 max-h-96 overflow-y-auto border border-gray-200 text-justify">
+                                    <h3 className="font-semibold mb-4">Texte à lire:</h3>
+                                    <div className="text-sm leading-relaxed whitespace-pre-line">{test.text}</div>
+                                </div>
+                            )}
+
+                            <div className="space-y-8">
+                                {test.questions.map((q, qIdx) => (
+                                    <div key={q.id} className="border-b border-gray-200 pb-8 last:border-b-0">
+                                        <p className="font-semibold mb-4 text-lg">
+                                            Question {qIdx + 1}: {q.text}
+                                        </p>
+
+                                        {q.type === 'ranking' && (
+                                            <div className="space-y-3">
+                                                {q.items.map((item, itemIdx) => (
+                                                    <div key={itemIdx} className="flex items-center gap-3">
+                                                        <select
+                                                            value={String((testAnswers[q.id]?.answer || [])[itemIdx] || '')}
+                                                            onChange={(e) => {
+                                                                // Ensure the array is initialized to the correct size with empty strings
+                                                                const currentRanking = testAnswers[q.id]?.answer || Array(q.items.length).fill('');
+                                                                const newRanking = Array(q.items.length).fill('');
+                                                                // Copy existing values, ensuring they are strings
+                                                                currentRanking.forEach((val, i) => {
+                                                                    newRanking[i] = String(val || '');
+                                                                });
+
+                                                                // Set the new value
+                                                                newRanking[itemIdx] = e.target.value;
+
+                                                                // Check for duplicates before setting the answer
+                                                                if (hasDuplicates(newRanking)) {
+                                                                    alert("Attention : Chaque rang (1 à 6) ne peut être attribué qu'une seule fois.");
+                                                                    // Do not update the answer if it creates a duplicate
+                                                                    return;
+                                                                }
+
+                                                                const currentEntry = testAnswers[q.id] || {};
+                                                                handleAnswer(test.id, q.id, { ...currentEntry, answer: newRanking });
+                                                            }}
+                                                            className="w-20 px-3 py-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 font-bold"
+                                                        >
+                                                            <option value="">-</option>
+                                                            {[1, 2, 3, 4, 5, 6].map(n => (
+                                                                <option key={n} value={String(n)}>{n}</option>
+                                                            ))}
+                                                        </select>
+                                                        <span className="text-sm">{item}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {/* Simplified Inputs - Copied from previous version as logic is same */}
+                                        {q.type === 'likert' && (<div className="flex flex-wrap gap-4">{[1, 2, 3, 4, 5].map(val => (<label key={val} className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-gray-50"><input type="radio" name={`${test.id}-${q.id}`} value={val} checked={testAnswers[q.id]?.answer === val.toString()} onChange={(e) => handleAnswer(test.id, q.id, e.target.value)} className="w-4 h-4 text-blue-600 focus:ring-blue-500" /><span className="text-sm">{val}</span></label>))}</div>)}
+                                        {q.type === 'agreement' && (<div className="space-y-2">{['Tout à fait d\'accord', 'Plutôt d\'accord', 'Plutôt pas d\'accord', 'Pas du tout d\'accord'].map(opt => (<label key={opt} className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-gray-50"><input type="radio" name={`${test.id}-${q.id}`} value={opt} checked={testAnswers[q.id]?.answer === opt} onChange={(e) => handleAnswer(test.id, q.id, e.target.value)} className="w-4 h-4 text-blue-600 focus:ring-blue-500" /><span className="text-sm">{opt}</span></label>))}</div>)}
+                                        {q.options && !q.type && (<div className="space-y-2">{q.options.map(opt => (<label key={opt.value} className="flex items-start gap-3 cursor-pointer p-3 hover:bg-gray-50 rounded border border-transparent hover:border-gray-200 transition-colors"><input type="radio" name={`${test.id}-${q.id}`} value={opt.value} checked={testAnswers[q.id]?.answer === opt.value} onChange={(e) => handleAnswer(test.id, q.id, e.target.value)} className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500" /><span className="text-sm"><strong>{opt.value}.</strong> {opt.text}</span></label>))}</div>)}
+                                        {q.type === 'longText' && (<textarea value={testAnswers[q.id]?.answer || ''} onChange={(e) => handleAnswer(test.id, q.id, e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 min-h-[150px]" placeholder="Votre réponse détaillée..." />)}
+                                        {q.hasJustification && (<div className="mt-4 bg-yellow-50 p-4 rounded-lg"><label className="block text-sm font-medium text-gray-700 mb-2">{q.justificationPrompt || 'Justifiez votre choix en 3 lignes maximum:'}</label><textarea value={testAnswers[q.id]?.justification || ''} onChange={(e) => handleAnswer(test.id, q.id, e.target.value, true)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" rows="3" placeholder="Votre justification..." /></div>)}
+                                    </div>
+                                ))}
+                            </div>
+
+                            <button onClick={handleNextTest} className="w-full mt-8 bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-700 transition shadow-md">
+                                {currentTest < tests.length - 1 ? 'Valider et passer au test suivant' : 'Terminer le test'}
+                            </button>
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderTransition = () => (
+                <div className="max-w-2xl mx-auto p-8 pt-20">
+                    <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+                        <CheckCircle className="mx-auto text-green-500 mb-4" size={64} />
+                        <h2 className="text-2xl font-bold text-blue-900 mb-4">Test sauvegardé</h2>
+                        <p className="text-gray-600 mb-8">
+                            Temps mis : {formatTime(testTimes[tests[currentTest].id] || 0)}
+                        </p>
+                        <button
+                            onClick={() => startTest(currentTest + 1)}
+                            className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700"
+                        >
+                            Commencer le test suivant
+                        </button>
+                    </div>
+                </div>
+            );
+
+            const renderResults = () => {
+                if (!results) return null;
+
+                return (
+                    <div className="max-w-5xl mx-auto p-4 md:p-8">
+                        <div className="bg-white rounded-lg shadow-lg p-8">
+
+                            {/* --- REPORT FOR PDF (Simplified structure for better PDF rendering) --- */}
+                            <div id="report-content" className="p-8 bg-white text-black">
+                                <div className="text-center mb-8 border-b-2 border-blue-900 pb-6">
+                                    <h1 className="text-3xl font-bold text-blue-900 mb-2">Rapport d'Évaluation</h1>
+                                    <h2 className="text-xl text-gray-700">Institut National de la Femme</h2>
+                                    <p className="text-sm text-gray-500 mt-2">Généré le: {new Date().toLocaleString()}</p>
+                                </div>
+
+                                <div className="mb-8 grid grid-cols-2 gap-4 bg-gray-50 p-6 rounded-lg">
+                                    <div><span className="font-bold text-gray-700">Candidat:</span> {candidateName}</div>
+                                    <div><span className="font-bold text-gray-700">Email:</span> {candidateEmail}</div>
+                                </div>
+
+                                {results.isEliminatoire && (
+                                    <div className="bg-red-50 border-l-4 border-red-500 p-6 mb-8">
+                                        <h3 className="font-bold text-red-900 text-lg mb-2">⚠️ Statut : Non Admissible</h3>
+                                        <p className="text-red-700 font-medium">{results.eliminatoireReason}</p>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-6 mb-8">
+                                    <div className="bg-blue-50 p-6 rounded-lg text-center border border-blue-100">
+                                        <p className="text-sm font-bold text-blue-800 uppercase tracking-widest mb-2">Score Global</p>
+                                        <p className="text-4xl font-extrabold text-blue-900">{results.totalScore} <span className="text-lg text-gray-500">/ 100</span></p>
+                                    </div>
+                                    <div className={`p-6 rounded-lg text-center border ${results.profile.startsWith('A') ? 'bg-green-50 border-green-200 text-green-900' :
+                                        results.profile.startsWith('B') ? 'bg-yellow-50 border-yellow-200 text-yellow-900' :
+                                            'bg-red-50 border-red-200 text-red-900'
+                                        }`}>
+                                        <p className="text-sm font-bold uppercase tracking-widest mb-2">Profil Identifié</p>
+                                        <p className="text-xl font-bold">{results.profile}</p>
+                                    </div>
+                                </div>
+
+                                <div className="mb-8 pdf-page-break-avoid">
+                                    <h3 className="text-lg font-bold text-gray-900 mb-4 uppercase border-b pb-2">Détail des Performances</h3>
+                                    <table className="w-full text-sm text-left text-gray-700">
+                                        <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                                            <tr>
+                                                <th className="px-6 py-3">Test</th>
+                                                <th className="px-6 py-3">Temps Utilisé</th>
+                                                <th className="px-6 py-3 text-right">Score</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {tests.map(test => {
+                                                const score = results.scores[test.id];
+                                                const timeUsed = testTimes[test.id] || 0;
+                                                return (
+                                                    <tr key={test.id} className="bg-white border-b hover:bg-gray-50">
+                                                        <td className="px-6 py-4 font-medium text-gray-900">{test.name}</td>
+                                                        <td className="px-6 py-4 font-mono">{formatTime(timeUsed)}</td>
+                                                        <td className="px-6 py-4 text-right font-bold">{score.weighted.toFixed(2)} / {score.max}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                        <tfoot className="bg-gray-100 font-bold">
+                                            <tr>
+                                                <td className="px-6 py-3">Total</td>
+                                                <td className="px-6 py-3">-</td>
+                                                <td className="px-6 py-3 text-right">{results.totalScore} / 100</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+
+                                <div className="mb-8">
+                                    <h3 className="text-lg font-bold text-gray-900 mb-4 uppercase border-b pb-2">Réponses détaillées</h3>
+                                    <div className="space-y-6 text-sm text-gray-800">
+                                        {tests.map(test => (
+                                            <div key={test.id} className="p-3 bg-gray-50 rounded pdf-page-break-avoid">
+                                                <div className="font-semibold mb-2">{test.name}</div>
+                                                <div className="space-y-2">
+                                                    {test.questions.map((q, idx) => {
+                                                        const a = answers[test.id]?.[q.id] || {};
+                                                        return (
+                                                            <div key={q.id} className="p-2 border rounded bg-white">
+                                                                <div className="text-sm font-medium">Q{idx + 1}: {q.text}</div>
+                                                                <div className="text-xs text-gray-600 mt-1">Réponse: {String(a.answer) || '—'}</div>
+                                                                {a.justification && <div className="text-xs text-gray-600 mt-1">Justification: {a.justification}</div>}
+                                                                {a.manualScore !== undefined && <div className="text-xs text-gray-600 mt-1">Note évaluateur: {a.manualScore} / {q.points || 4}</div>}
+                                                                <div className="text-xs text-gray-600 mt-1">Temps réponse: {a.timeTaken ? formatTime(a.timeTaken) : '—'}</div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="text-xs text-gray-400 text-center mt-12 pt-4 border-t">Document confidentiel - Usage interne uniquement - INF</div>
+                            </div>
+                            {/* --- End Report Content --- */}
+
+                            <hr className="my-8" />
+
+                            {/* Manual scoring UI removed - now fully automated */}
+
+                            <div className="flex flex-col gap-4 print:hidden">
+                                <div className="bg-yellow-50 p-4 rounded border border-yellow-200 text-yellow-800 text-sm mb-4">
+                                    <strong>⚠️ RAPPEL FINAL :</strong> Veuillez télécharger le rapport PDF ci-dessous. Une fois cette page fermée, vous ne pourrez plus y accéder sans contacter l'administrateur.
+                                </div>
+                                <div className="flex flex-wrap gap-3">
+                                    <button
+                                        onClick={generatePDF}
+                                        className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2"
+                                    >
+                                        <Download size={20} />
+                                        Télécharger le rapport PDF
+                                    </button>
+                                    <button
+                                        onClick={sendEmailWithReport}
+                                        className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition flex items-center justify-center gap-2"
+                                    >
+                                        <FileText size={20} />
+                                        Envoyer par Email
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-gray-100 py-8">
+                    {currentSection === 'intro' && renderIntro()}
+                    {currentSection === 'testList' && renderTestList()}
+                    {currentSection === 'test' && renderTest()}
+                    {currentSection === 'transition' && renderTransition()}
+                    {currentSection === 'results' && renderResults()}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<TestPsychotechniqueINF />);
+    </script>
+</body>
+
+</html>

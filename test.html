@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test React</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <div className="p-8 text-center">
+                <h1 className="text-3xl font-bold text-blue-900">React fonctionne ! 🎉</h1>
+                <p className="mt-4 text-gray-700">Babel et React sont correctement chargés.</p>
+            </div>
+        );
+    </script>
+</body>
+</html>
