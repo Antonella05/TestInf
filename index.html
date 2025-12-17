@@ -608,59 +608,106 @@ Dans ce contexte, le rôle du/de la Chargé(e) des Antennes Départementales et 
                 setCurrentSection('results');
             };
 
-            // --- PDF Generation Fixes (Visible Overlay for reliability) ---
-            const generatePDF = () => {
+            // --- PDF Generation Shared Logic ---
+            const performPdfGeneration = async (mode = 'download') => {
                 const element = document.getElementById('report-content');
                 if (!element) return;
 
                 // Create a visible overlay container
+                // CHANGED: Use fixed centering to ensure visibility
                 const container = document.createElement('div');
                 Object.assign(container.style, {
-                    position: 'fixed',
+                    position: 'absolute',
                     top: '0',
                     left: '0',
-                    width: '100%',
-                    height: '100%',
-                    zIndex: '9999',
+                    width: '720px', // Standard A4 width at 96 DPI
+                    padding: '0',   // No padding on container, let margins handle it
+                    margin: '0',
+                    boxSizing: 'border-box',
                     backgroundColor: 'white',
-                    overflow: 'auto',
-                    padding: '20px'
+                    zIndex: '9999',  // Ensure it's on top if visible
+                    opacity: '1'     // Ensure it's fully visible for capture
                 });
 
                 // Clone the element
                 const clone = element.cloneNode(true);
                 // Ensure the clone has proper styling for A4 export
                 Object.assign(clone.style, {
-                    width: '800px', // Fixed width for consistent PDF layout
+                    width: '100%',  // Fill the container
+                    maxWidth: '100%',
                     margin: '0 auto',
+                    padding: '20px 40px', // Horizontal padding to prevent edge text
                     backgroundColor: 'white',
-                    boxShadow: 'none'
+                    boxShadow: 'none',
+                    fontSize: '12px', // Comfortable reading size
+                    lineHeight: '1.5',
+                    wordBreak: 'normal',
+                    whiteSpace: 'normal',
+                    overflowWrap: 'break-word',
+                    color: 'black' // Ensure text is black
                 });
 
                 container.appendChild(clone);
                 document.body.appendChild(container);
 
+                // Scroll to top to ensure capture starts correctly
+                window.scrollTo(0, 0);
+
                 const opt = {
-                    margin: 0.5,
+                    margin: [0.4, 0.4, 0.4, 0.4], // Balanced margins
                     filename: `Rapport_INF_${candidateName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`,
                     image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 1024 }, // Ensure windowWidth is sufficient
+                    html2canvas: {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        windowWidth: 1200, // Large enough capture window
+                        scrollX: 0,
+                        scrollY: 0,
+                        windowHeight: container.scrollHeight + 100 // Extra buffer
+                    },
                     jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
                     pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
                 };
 
-                // Add a small delay to allow rendering to settle
-                setTimeout(() => {
-                    html2pdf().set(opt).from(clone).save().then(() => {
-                        console.log("PDF Generated");
-                        if (document.body.contains(container)) document.body.removeChild(container);
-                    }).catch(err => {
-                        console.error("PDF Generation Error", err);
-                        if (document.body.contains(container)) document.body.removeChild(container);
-                        alert("Une erreur est survenue lors de la génération du PDF.");
-                    });
-                }, 100);
+                try {
+                    // Slight delay for rendering
+                    await new Promise(resolve => setTimeout(resolve, 500));
+
+                    if (mode === 'download') {
+                        await html2pdf().set(opt).from(clone).save();
+                        console.log("PDF Generated and Downloaded");
+                    } else if (mode === 'email') {
+                        const pdfBlob = await html2pdf().set(opt).from(clone).output('blob');
+
+                        // Trigger download for manual attachment
+                        const url = URL.createObjectURL(pdfBlob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = opt.filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+
+                        // Then, open the mail client with instructions
+                        const subject = `Rapport INF - ${candidateName} (À joindre manuellement)`;
+                        const body = `Bonjour,\n\nVeuillez trouver ci-joint le rapport d'évaluation psychotechnique pour ${candidateName}.\n\nATTENTION : Le fichier PDF a été téléchargé sur votre ordinateur. Veuillez l'attacher manuellement à cet e-mail avant de l'envoyer.\n\nCordialement.`;
+                        const mailto = `mailto:impactplusconsulting229@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+                        alert("Le rapport PDF a été téléchargé sur votre ordinateur. Une nouvelle fenêtre d'e-mail va s'ouvrir. VEUILLEZ JOINDRE MANUELLEMENT LE FICHIER PDF TÉLÉCHARGÉ avant d'envoyer.");
+                        window.location.href = mailto;
+                    }
+                } catch (err) {
+                    console.error("PDF Generation Error", err);
+                    alert("Une erreur est survenue lors de la génération du PDF.");
+                } finally {
+                    if (document.body.contains(container)) document.body.removeChild(container);
+                }
             };
+
+            const generatePDF = () => performPdfGeneration('download');
+            const sendEmailWithReport = () => performPdfGeneration('email');
 
             // --- Warning Modal ---
             const WarningModal = () => (
@@ -803,113 +850,6 @@ Dans ce contexte, le rôle du/de la Chargé(e) des Antennes Départementales et 
                     alert('Le rapport JSON complet a été copié dans le presse-papiers. Vous pouvez maintenant le coller dans votre email.');
                 } catch (err) {
                     alert('Echec de la copie. Vous pouvez télécharger le JSON puis le joindre manuellement.');
-                }
-            };
-
-            // --- Email Sending Function (Simulated Backend) ---
-            const sendEmailWithReport = async () => {
-                const element = document.getElementById('report-content');
-                if (!element) return;
-
-                // Create a visible overlay container
-                const container = document.createElement('div');
-                Object.assign(container.style, {
-                    position: 'fixed',
-                    top: '0',
-                    left: '0',
-                    width: '100%',
-                    height: '100%',
-                    zIndex: '9999',
-                    backgroundColor: 'white',
-                    overflow: 'auto',
-                    padding: '20px'
-                });
-
-                // Clone the element
-                const clone = element.cloneNode(true);
-                Object.assign(clone.style, {
-                    width: '800px',
-                    margin: '0 auto',
-                    backgroundColor: 'white',
-                    boxShadow: 'none'
-                });
-
-                container.appendChild(clone);
-                document.body.appendChild(container);
-
-                const opt = {
-                    margin: 0.5,
-                    filename: `Rapport_INF_${candidateName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`,
-                    image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 1024 },
-                    jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
-                    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-                };
-
-                try {
-                    // Slight delay for rendering
-                    await new Promise(resolve => setTimeout(resolve, 100));
-
-                    const pdfBlob = await html2pdf().set(opt).from(clone).output('blob');
-                    if (document.body.contains(container)) document.body.removeChild(container);
-
-                    // 2. Convert Blob to Base64 for simulated transmission
-                    const reader = new FileReader();
-                    reader.readAsDataURL(pdfBlob);
-                    reader.onloadend = async () => {
-                        const base64data = reader.result.split(',')[1]; // Get the base64 part
-
-                        // 3. SIMULATED BACKEND CALL
-                        // NOTE: Direct email sending with attachment from client-side JS is impossible
-                        // due to security restrictions. This function SIMULATES the process.
-                        // In a real application, you would send the base64data to a server endpoint.
-                        // Example of what a real-world fetch might look like:
-                        /*
-                        const response = await fetch('YOUR_SERVER_ENDPOINT_FOR_EMAIL', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                to: 'impactplusconsulting229@gmail.com',
-                                subject: `Rapport INF - ${candidateName}`,
-                                body: 'Veuillez trouver ci-joint le rapport d\'évaluation psychotechnique.',
-                                attachment: {
-                                    filename: opt.filename,
-                                    data: base64data
-                                }
-                            })
-                        });
-                        if (response.ok) {
-                            alert("Le rapport a été envoyé avec succès par e-mail !");
-                        } else {
-                            throw new Error('Erreur lors de l\'envoi côté serveur.');
-                        }
-                        */
-
-                        // Since we cannot run a server, we use a client-side workaround:
-                        // 1. Prompt the user to download the PDF.
-                        // 2. Open the mail client with instructions to attach the downloaded file.
-
-                        // First, trigger the download for the user
-                        const url = URL.createObjectURL(pdfBlob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = opt.filename;
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                        URL.revokeObjectURL(url);
-
-                        // Then, open the mail client with instructions
-                        const subject = `Rapport INF - ${candidateName} (À joindre manuellement)`;
-                        const body = `Bonjour,\n\nVeuillez trouver ci-joint le rapport d'évaluation psychotechnique pour ${candidateName}.\n\nATTENTION : Le fichier PDF a été téléchargé sur votre ordinateur. Veuillez l'attacher manuellement à cet e-mail avant de l'envoyer.\n\nCordialement.`;
-                        const mailto = `mailto:impactplusconsulting229@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
-                        alert("Le rapport PDF a été téléchargé sur votre ordinateur. Une nouvelle fenêtre d'e-mail va s'ouvrir. VEUILLEZ JOINDRE MANUELLEMENT LE FICHIER PDF TÉLÉCHARGÉ avant d'envoyer.");
-                        window.location.href = mailto;
-                    };
-                } catch (err) {
-                    console.error("Email/PDF Generation Error", err);
-                    alert("Une erreur est survenue lors de la préparation du rapport. Veuillez réessayer.");
                 }
             };
 
